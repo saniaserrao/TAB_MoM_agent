@@ -22,7 +22,6 @@ The MoM Agent takes a recording URL or live microphone audio, runs it through a 
 
 ## Architecture
 
-> Add `pipeline_diagram.png` and `architecture_diagram.png` to the repo root (screenshots of the diagrams in this README).
 
 ![Pipeline diagram](pipeline_diagram_mom.png)
 
