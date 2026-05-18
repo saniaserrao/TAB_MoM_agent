@@ -17,81 +17,79 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 # Prompt
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are an expert meeting minutes writer for Microsoft Innovation Hub (MIH).
-You receive structured extractions from overlapping chunks of a single meeting transcript.
-Your output will be read by people who did NOT attend the meeting — they must get a full,
-accurate understanding of what was discussed, decided, and assigned, with zero fluff.
+_SYSTEM_PROMPT = """You are an expert meeting minutes editor for Microsoft Innovation Hub (MIH).
+You receive pre-extracted data from a meeting transcript, including discussion paragraphs
+already written by a per-chunk extractor, grouped by topic key.
+
+Your output will be read by people who did NOT attend. They need a complete, accurate
+picture — zero fluff, specific details, named attribution.
 
 CRITICAL RULES:
 - Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
-- The JSON must match the exact schema in the user message.
+- Match the exact schema in the user message.
 
-AGENDA ITEMS (problem_statements field):
-- Each entry is ONE distinct agenda topic discussed in the meeting.
-- A typical meeting has 3-7 items. HARD LIMIT: 8 maximum.
-- Group tightly related sub-points into one item.
-- The "content" field is a SHORT TOPIC TITLE (4-7 words), Title Case.
-  GOOD: "FedRAMP Compliance and Reviewer Roulette"
-  GOOD: "Engineering MR Rate Metrics"
-  BAD:  "The team discussed MR rates and how to improve them"
+AGENDA ITEMS (problem_statements):
+- DERIVE TITLES DIRECTLY from the keys of discussion_paragraphs_by_topic.
+  Do NOT invent new titles. Map each topic key → one agenda item.
+  You may merge two closely related topic keys into one item (e.g. "Anti-Abuse
+  Migration" + "Data Science Rename" → "Data Science Restructure"), but only if
+  they are genuinely the same topic discussed from two angles.
+- Title Case. 3-6 words. HARD LIMIT: 8 items.
 
-DISCUSSIONS (flexible_tags with type="discussion"):
-- Write one "discussion" tag per agenda item.
-- Set "speaker" to the EXACT topic title from problem_statements so it can be matched.
-- SUBSTANCE RULES — the discussion narrative MUST:
-  * Be 4-8 sentences of dense, informative prose. Never fewer than 4 sentences.
-  * Name specific people when they raised a point, proposed an idea, or raised a concern.
-    Use passive voice only when the speaker is genuinely unknown.
-    GOOD: "Wayne confirmed that Anti-Abuse has officially migrated into the Data Science section."
-    GOOD: "Thomas raised the FedRAMP deviation requirement, noting that any CVE-linked vulnerability
-           in container or dependency scanning needs a documented remediation plan even for false positives."
-    BAD:  "The team discussed security issues and audits."
-    BAD:  "Updates were shared regarding the reorganization."
-  * Explain the WHAT and WHY — not just that something was discussed, but what was actually said,
-    what the problem or context is, and what direction was taken or proposed.
-  * Include specific numbers, names, tools, timelines, or constraints mentioned in the meeting.
-  * A non-attendee reading this should understand the topic as well as someone who was in the room.
-  * NEVER start with "The team discussed", "Updates were shared", "The group talked about",
-    or any other vague filler opener. Start with a specific person, decision, or concrete fact.
+DISCUSSIONS (flexible_tags type="discussion"):
+- One per agenda item.
+- "speaker" field = EXACTLY the problem_statement content string you wrote above.
+- SOURCE: take all paragraphs under the matching topic key(s) from
+  discussion_paragraphs_by_topic. Merge them into one cohesive narrative.
+  Do NOT discard content. Do NOT paraphrase away specifics.
+- LENGTH: 4-8 sentences. Never fewer than 4.
+- Keep all named people, numbers, tool names, product names from source paragraphs.
+- NEVER start with "The team discussed" or any vague filler.
+  Start with a named person or a specific concrete fact.
 
 ACTION ITEMS:
-- Deduplicate by (description, owner_name). Keep the entry with the most complete deadline.
-- Do NOT repeat a decision as an action item.
-- description must be a concrete, specific task — not a vague restatement.
+- Include ALL action items from structured_facts.action_items.
+- Deduplicate by (description, owner_name) — keep most complete deadline.
+- Descriptions must be specific: what exactly must be done, not just a category.
 
 KEY DECISIONS:
-- Only genuine decisions, agreements, or confirmed outcomes. Not restatements of problems.
-- Be specific: include what was decided, not just that a decision was made.
+- Include ALL decisions from structured_facts.key_decisions.
+- Deduplicate. Confirmed outcomes only. Specific — what was decided/agreed/closed.
 
 DEDUPLICATION:
-- If the same point appears in multiple chunks due to overlap, keep only one instance.
-- If engagement_type differs across chunks, use the most common value.
+- Same paragraph in multiple topic keys → keep the most complete version, drop shorter.
+- Most common engagement_type across chunks wins.
 """
 
-_USER_PROMPT_TEMPLATE = """Consolidate the chunk extractions below into the output schema.
-Target 3-7 agenda items. HARD LIMIT: no more than 8 problem_statements.
+_USER_PROMPT_TEMPLATE = """Consolidate into final meeting minutes.
+HARD LIMIT: 8 problem_statements maximum.
 
-CHUNK EXTRACTIONS:
+EXTRACTED DATA:
 {extractions_json}
+
+IMPORTANT: The problem_statements titles MUST come from the keys of
+discussion_paragraphs_by_topic. Do not invent topic titles.
+Each discussion flexible_tag's "speaker" field MUST exactly match
+the corresponding problem_statement "content" string.
 
 Return a JSON object with exactly these fields:
 {{
   "engagement_type_detected": "string or null",
-  "summary": "4-6 sentence factual overview of the entire meeting. Name specific people and outcomes. Never use vague openers like 'The meeting covered...' — start with the most significant outcome or decision.",
+  "summary": "4-6 sentences. Name people and concrete outcomes. Lead with the most significant result. Never open with 'The meeting covered...'",
   "problem_statements": [
-    {{"type": "problem_statement", "content": "SHORT TOPIC TITLE 4-7 words", "speaker": "...", "timestamp": null}}
+    {{"type": "problem_statement", "content": "Title from discussion_paragraphs_by_topic key", "speaker": "unknown", "timestamp": null}}
   ],
   "action_items": [
-    {{"description": "specific, concrete task description", "owner_name": "...", "owner_role": "...", "deadline": "... or null"}}
+    {{"description": "specific task", "owner_name": "full name", "owner_role": "ta|msft|client|unknown", "deadline": "date or null"}}
   ],
   "client_queries": [
-    {{"type": "client_query", "content": "...", "speaker": "client", "timestamp": null}}
+    {{"type": "client_query", "content": "exact question", "speaker": "client", "timestamp": null}}
   ],
   "key_decisions": [
-    {{"type": "key_decision", "content": "specific decision or agreement reached", "speaker": "...", "timestamp": null}}
+    {{"type": "key_decision", "content": "specific decision made", "speaker": "unknown", "timestamp": null}}
   ],
   "flexible_tags": [
-    {{"type": "discussion", "content": "4-8 sentences of dense, specific, named narrative for this agenda item. Name people. Include specifics. No filler openers.", "speaker": "EXACT topic title from problem_statements"}},
+    {{"type": "discussion", "content": "4-8 sentences merged from discussion_paragraphs_by_topic for this topic. Named people. Specific details. No filler openers.", "speaker": "MUST EXACTLY MATCH the problem_statement content string for this topic"}},
     {{"type": "roi_signal", "content": "...", "speaker": "..."}},
     {{"type": "stakeholder_concern", "content": "...", "speaker": "..."}}
   ]
@@ -102,22 +100,94 @@ Return a JSON object with exactly these fields:
 # Helpers
 # ---------------------------------------------------------------------------
 
-_MAX_EXTRACTIONS_CHARS = 28_000  # safety cap before sending to LLM
+_MAX_EXTRACTIONS_CHARS = 32_000
 
 
 def _build_extractions_payload(chunk_extractions: list) -> str:
     """
-    Serialise chunk_extractions to JSON string, skipping None entries.
-    Truncates if the serialised form exceeds the character cap to stay within
-    the model context window.
+    Consolidate all chunk extractions into a structured payload.
+
+    Groups discussion_paragraphs by topic (deduplicated), then collects
+    structured facts (actions, decisions, queries, problem statements).
+    The synthesiser merges the pre-written paragraphs rather than writing
+    from scratch with no raw material.
     """
+    from collections import defaultdict
+
     valid = [c for c in chunk_extractions if c is not None]
-    raw = json.dumps(valid, ensure_ascii=False, indent=2)
+    if not valid:
+        return "{}"
+
+    # ── 1. Group discussion_paragraphs by topic ────────────────────────────
+    topic_map: dict[str, list[str]] = defaultdict(list)
+    seen_para_keys: set[str] = set()
+
+    for chunk in valid:
+        for dp in (chunk.get("discussion_paragraphs") or []):
+            topic     = (dp.get("topic") or "General").strip()
+            paragraph = (dp.get("paragraph") or "").strip()
+            if not paragraph:
+                continue
+            # Deduplicate on first 100 chars (overlapping chunks repeat content)
+            key = paragraph[:100].lower()
+            if key in seen_para_keys:
+                continue
+            seen_para_keys.add(key)
+            topic_map[topic].append(paragraph)
+
+    # ── 2. Collect structured facts ────────────────────────────────────────
+    seen_actions:   set[str] = set()
+    seen_decisions: set[str] = set()
+    all_problems:   list = []
+    all_actions:    list = []
+    all_queries:    list = []
+    all_decisions:  list = []
+    all_flex:       list = []
+    summary_frags:  list = []
+
+    for chunk in valid:
+        sf = (chunk.get("summary_fragment") or "").strip()
+        if sf:
+            summary_frags.append(sf)
+
+        all_problems.extend(chunk.get("problem_statements") or [])
+
+        for ai in (chunk.get("action_items") or []):
+            key = f"{(ai.get('description',''))[:60]}|{ai.get('owner_name','')}"
+            if key not in seen_actions:
+                seen_actions.add(key)
+                all_actions.append(ai)
+
+        all_queries.extend(chunk.get("client_queries") or [])
+
+        for kd in (chunk.get("key_decisions") or []):
+            key = (kd.get("content") or "")[:80].lower()
+            if key not in seen_decisions:
+                seen_decisions.add(key)
+                all_decisions.append(kd)
+
+        all_flex.extend([
+            t for t in (chunk.get("flexible_tags") or [])
+            if t.get("type") != "discussion"
+        ])
+
+    payload = {
+        "discussion_paragraphs_by_topic": dict(topic_map),
+        "structured_facts": {
+            "summary_fragments":  summary_frags,
+            "problem_statements": all_problems,
+            "action_items":       all_actions,
+            "client_queries":     all_queries,
+            "key_decisions":      all_decisions,
+            "flexible_tags":      all_flex,
+        },
+    }
+
+    raw = json.dumps(payload, ensure_ascii=False, indent=2)
     if len(raw) > _MAX_EXTRACTIONS_CHARS:
         logger.warning(
-            "chunk_extractions payload is %d chars — truncating to %d for LLM call.",
-            len(raw),
-            _MAX_EXTRACTIONS_CHARS,
+            "extractions payload is %d chars — truncating to %d.",
+            len(raw), _MAX_EXTRACTIONS_CHARS,
         )
         raw = raw[:_MAX_EXTRACTIONS_CHARS] + "\n... (truncated)"
     return raw
@@ -194,7 +264,7 @@ def synthesise_node(state: dict) -> dict:
     ]
 
     try:
-        response = chat_completion(messages, model=GROQ_MODEL, max_tokens=4096, temperature=0.1)
+        response = chat_completion(messages, model=GROQ_MODEL, max_tokens=6000, temperature=0.1)
         raw_text: str = response.choices[0].message.content
     except Exception as exc:
         logger.error("synthesise_node: Groq LLM call failed: %s", exc)

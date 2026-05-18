@@ -171,6 +171,7 @@ def _parse_json_response(raw_text: str) -> dict:
     defaults = {
         "engagement_type_detected": None,
         "summary_fragment": "",
+        "discussion_paragraphs": [],
         "problem_statements": [],
         "action_items": [],
         "client_queries": [],

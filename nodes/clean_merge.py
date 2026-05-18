@@ -106,12 +106,27 @@ def clean_merge_node(state: MoMState) -> MoMState:
 
     logger.info("[clean_merge] Merged text: %d chars total.", len(merged_text))
 
-    # ── Derive speaker_map ────────────────────────────────────────────────────
-    # Use the raw notes first (structured MoM docs have clean attendee blocks),
-    # fall back to raw transcript.
-    source_for_speaker_map = raw_notes or raw_transcript or ""
-    speaker_map = _build_speaker_map(source_for_speaker_map)
-    logger.info("[clean_merge] Speaker map: %d entries derived.", len(speaker_map))
+    # ── Derive or preserve speaker_map ───────────────────────────────────────
+    # Priority: if ingest_node already built a speaker_map from participants,
+    # keep it. Only attempt text-based derivation if the map is genuinely empty.
+    existing_speaker_map = state.get("speaker_map") or {}
+    if existing_speaker_map:
+        speaker_map = existing_speaker_map
+        logger.info("[clean_merge] Retaining speaker_map from ingest_node — %d entries.", len(speaker_map))
+    else:
+        source_for_speaker_map = raw_notes or raw_transcript or ""
+        speaker_map = _build_speaker_map(source_for_speaker_map)
+        logger.info("[clean_merge] Speaker map derived from text — %d entries.", len(speaker_map))
+
+    # ── Prepend participants context block ────────────────────────────────────
+    # Inject a structured participants header into the merged text so the LLM
+    # extractor has name→role context immediately before the transcript.
+    participants = state.get("participants") or []
+    context_block = _build_participant_context(participants, speaker_map)
+    if context_block:
+        merged_text = context_block + "\n\n" + merged_text
+
+    logger.info("[clean_merge] Merged text (with context): %d chars total.", len(merged_text))
 
     updates["merged_text"] = merged_text
     updates["speaker_map"] = speaker_map
@@ -231,3 +246,55 @@ def _classify_section_header(line: str) -> Optional[str]:
         return "client"
 
     return None
+
+# ─── Participant context block ─────────────────────────────────────────────────
+
+_ROLE_DISPLAY = {
+    "ta":      "Microsoft Innovation Hub (TA/Facilitator)",
+    "msft":    "Microsoft",
+    "client":  "Client / External",
+    "unknown": "Unknown",
+}
+
+
+def _build_participant_context(participants: list, speaker_map: dict) -> str:
+    """
+    Build a structured PARTICIPANTS header that is prepended to merged_text.
+    This gives the extraction LLM explicit name→designation→role context
+    before it reads the transcript, enabling speaker attribution even when
+    the transcript has no inline speaker labels.
+
+    Format:
+        [PARTICIPANTS]
+        Wayne — Director of Engineering, Sec Growth & Data Science (Client / External)
+        Thomas — Engineering Manager, Secure / Dynamic Analysis (Client / External)
+        ...
+    """
+    if not participants and not speaker_map:
+        return ""
+
+    lines = ["[PARTICIPANTS]"]
+
+    # Use participants list as primary source (has designation)
+    seen: set[str] = set()
+    for p in participants:
+        name  = (p.get("name") or "").strip()
+        desig = (p.get("designation") or "").strip()
+        role  = (p.get("role") or "unknown").strip()
+        if not name:
+            continue
+        role_label = _ROLE_DISPLAY.get(role, role.title())
+        entry = f"{name} — {desig} ({role_label})" if desig else f"{name} ({role_label})"
+        lines.append(entry)
+        seen.add(name)
+
+    # Add any speaker_map entries not covered by participants
+    for name, role in speaker_map.items():
+        if name not in seen:
+            role_label = _ROLE_DISPLAY.get(role, role.title())
+            lines.append(f"{name} ({role_label})")
+
+    if len(lines) == 1:
+        return ""
+
+    return "\n".join(lines)

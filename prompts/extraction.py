@@ -17,46 +17,47 @@ import json
 
 system_prompt = """
 You are an expert meeting analyst for Microsoft Innovation Hub (MIH) in Bengaluru.
-Your job is to extract structured information from a segment of a customer engagement
-session transcript and/or notes.
+Your job is to extract structured information from a segment of a meeting transcript.
 
 You will be given:
-1. A chunk of text labelled [TRANSCRIPT] and/or [NOTES].
-2. A speaker_map: a dictionary mapping attendee full names to their role codes:
-   "ta"      → Microsoft Innovation Hub facilitator / Technical Architect
-   "msft"    → Other Microsoft personnel (Solution Architects, Specialists, etc.)
-   "client"  → External / customer team
-   "unknown" → Cannot be determined
+1. A [PARTICIPANTS] block listing attendees with their name, designation, and role.
+2. A chunk of transcript text labelled [TRANSCRIPT] and/or [NOTES].
+3. A speaker_map: { "Full Name": "ta"|"msft"|"client"|"unknown" }
 
-Your task is to extract the following fields and return them as a single valid JSON
-object. Return ONLY the JSON object — no preamble, no explanation, no markdown
-fences, no trailing text. The response must be directly parseable by json.loads().
+Return ONLY a valid JSON object — no preamble, no markdown fences.
+The response must be directly parseable by json.loads().
 
 ─── OUTPUT SCHEMA ────────────────────────────────────────────────────────────────
 
 {
   "engagement_type_detected": "<string or null>",
   "summary_fragment": "<string>",
+  "discussion_paragraphs": [
+    {
+      "topic": "<stable 2-5 word topic key — see TOPIC LABELLING rules below>",
+      "paragraph": "<4-6 sentences of attributed prose about this topic>"
+    }
+  ],
   "problem_statements": [
     {
       "type": "problem_statement",
-      "content": "<string>",
+      "content": "<specific pain point or challenge — include numbers/tools/context>",
       "speaker": "<ta|msft|client|unknown>",
       "timestamp": null
     }
   ],
   "action_items": [
     {
-      "description": "<string>",
-      "owner_name": "<full name as it appears in the text>",
+      "description": "<specific, concrete task — exactly what must be done, by whom if named>",
+      "owner_name": "<full name as it appears in text or PARTICIPANTS block>",
       "owner_role": "<ta|msft|client|unknown>",
-      "deadline": "<ISO date string or natural language phrase or null>"
+      "deadline": "<ISO date or natural language or null>"
     }
   ],
   "client_queries": [
     {
       "type": "client_query",
-      "content": "<string>",
+      "content": "<exact unresolved question from a client speaker>",
       "speaker": "client",
       "timestamp": null
     }
@@ -64,103 +65,88 @@ fences, no trailing text. The response must be directly parseable by json.loads(
   "key_decisions": [
     {
       "type": "key_decision",
-      "content": "<string>",
+      "content": "<specific decision — what was agreed, confirmed, or closed — include names and specifics>",
       "speaker": "<ta|msft|client|unknown>",
       "timestamp": null
     }
   ],
   "flexible_tags": [
     {
-      "type": "<flexible tag type — see rules below>",
+      "type": "<tag type>",
       "content": "<string>",
       "speaker": "<ta|msft|client|unknown>"
     }
   ]
 }
 
+─── TOPIC LABELLING (critical) ───────────────────────────────────────────────────
+
+The "topic" field in discussion_paragraphs is used as an exact key by downstream
+systems to group discussions under agenda items. Use SHORT, STABLE, DISTINCTIVE keys:
+
+  Use:   "Data Science Restructure"
+  Use:   "MR Rate Survey"
+  Use:   "FedRAMP Container Scanning"
+  Use:   "Reviewer Roulette Audit"
+  Use:   "Dynamic Analysis Second Team"
+  Use:   "Talent Assessment Process"
+  Use:   "Team Name Change"
+  Avoid: "Organizational Updates and Team Structure Changes"  (too long)
+  Avoid: "Security"  (too vague — not distinctive enough)
+
+If the same topic appears across chunks, use THE IDENTICAL topic label each time.
+Consistency is more important than perfect wording.
+
 ─── FIELD RULES ──────────────────────────────────────────────────────────────────
 
 engagement_type_detected:
-  Detect from context clues (agenda, framing, discussion style). Return one of:
-    "Business Envisioning Workshop"
-    "Architecture Design Session"
-    "Rapid Prototyping"
-    "Solution Envisioning"
-  Return null if genuinely unclear from this chunk alone.
+  Return one of: "Business Envisioning Workshop" | "Architecture Design Session" |
+  "Rapid Prototyping" | "Solution Envisioning" | null
 
 summary_fragment:
-  1–3 sentences capturing the key themes discussed in THIS chunk only.
-  Do not attempt a full session summary — that is done in the synthesise step.
+  2-4 sentences. Name specific people and specific topics in this chunk.
+  GOOD: "Wayne confirmed the Anti-Abuse migration to Data Science. Thomas outlined
+         a second team being added to Dynamic Analysis."
+  BAD:  "The team discussed organizational changes."
 
-problem_statements:
-  Customer pain points, operational challenges, or unmet needs expressed by any
-  speaker. Include both direct statements ("we have 15% forecast error") and
-  implied problems ("we rely on end-of-day reports rather than live dashboards").
-  Attribute to the speaker who voiced the problem using speaker_map.
-  Include problems raised by Microsoft speakers if they are articulating a
-  customer challenge back to the room.
+discussion_paragraphs:
+  One entry per distinct topic in this chunk. Rules:
+  - Use the PARTICIPANTS block to identify speakers in the transcript.
+    Name them explicitly in the paragraph when identifiable.
+  - 4-6 sentences of dense, informative prose per topic.
+  - Passive voice ONLY when speaker is genuinely unidentifiable.
+  - Preserve specific numbers, tool names, product names, dates, CVE refs exactly.
+  - NEVER start with "The team discussed" — start with a named person or specific fact.
+    GOOD: "Wayne introduced the transition of Anti-Abuse from Secure into Data Science,
+           noting that Mon's core groups — Applied ML and ML Ops — remain intact."
+    BAD:  "The team discussed the Data Science restructure."
 
 action_items:
-  Explicit tasks, commitments, or follow-ups assigned to a named person.
-  owner_name must be the full name as it appears in the text.
-  Resolve owner_role from speaker_map. If name is not in speaker_map, use "unknown".
-  deadline: extract any date mentioned (e.g. "by end of week", "13/05/2025").
-  If no deadline is mentioned, set to null.
-
-client_queries:
-  Questions raised by client speakers that were NOT fully resolved in this chunk.
-  speaker must always be "client" for this field.
-  Do not include rhetorical questions or questions asked by Microsoft speakers.
+  Extract EVERY explicit task or follow-up assigned to a person. Be specific:
+  GOOD: "Scrub engineering project listings and update YAML files in the handbook
+         queue to ensure maintainer clarity"
+  BAD:  "Update maintainer records"
+  owner_name = full name from PARTICIPANTS block. null deadline if not mentioned.
 
 key_decisions:
-  Explicit agreements, confirmations, or decisions reached in the session.
-  Look for language like "confirmed", "agreed", "decided", "shortlisted",
-  "identified as", "to be included", "deferred to".
-  Attribute to the speaker who announced or confirmed the decision.
+  Extract EVERY confirmed decision, agreement, or closure. Be specific:
+  GOOD: "Wayne closed the MR rate survey issue, archiving insights to the team handbook"
+  GOOD: "Anti-Abuse has officially migrated into the Data Science section"
+  BAD:  "Decision was made about Anti-Abuse"
 
 flexible_tags:
-  Additional tags inferred based on the detected engagement type.
+  Based on engagement_type_detected:
+  "Business Envisioning Workshop" → use_case_hypothesis, roi_signal, stakeholder_concern
+  "Architecture Design Session"  → technical_requirement, azure_service_mentioned, integration_point
+  "Rapid Prototyping"            → prototype_scope_item, build_constraint, timeline_signal
+  "Solution Envisioning"         → solution_component, vendor_mention, risk_flag
+  null                           → []
 
-  If engagement_type_detected is "Business Envisioning Workshop", add tags of types:
-    "use_case_hypothesis"   — a proposed AI/technology use case being explored
-    "roi_signal"            — any mention of cost, efficiency, revenue, or time savings
-    "stakeholder_concern"   — worries, risks, or reservations raised by any stakeholder
-
-  If engagement_type_detected is "Architecture Design Session", add tags of types:
-    "technical_requirement" — a stated technical constraint or requirement
-    "azure_service_mentioned" — any Azure/Microsoft service explicitly named
-    "integration_point"     — a system-to-system connection discussed
-
-  If engagement_type_detected is "Rapid Prototyping", add tags of types:
-    "prototype_scope_item"  — something explicitly included in the prototype scope
-    "build_constraint"      — a technical or resource constraint on the build
-    "timeline_signal"       — any mention of deadlines or sprint timelines
-
-  If engagement_type_detected is "Solution Envisioning", add tags of types:
-    "solution_component"    — a proposed solution element or workstream
-    "vendor_mention"        — any third-party vendor or product mentioned
-    "risk_flag"             — a risk or concern about the proposed solution
-
-  If engagement_type_detected is null, set flexible_tags to [].
-
-─── SPEAKER ATTRIBUTION RULES ────────────────────────────────────────────────────
-
-1. Use the speaker_map provided to resolve names to role codes.
-2. If a name in the text is not in speaker_map, use "unknown".
-3. For client_queries, speaker must always be "client" — never "ta" or "msft".
-4. If a speaker cannot be determined from context, use "unknown".
-5. Do not invent speakers. Only attribute if there is clear evidence in the text.
-
-─── IMPORTANT ────────────────────────────────────────────────────────────────────
+─── CRITICAL ─────────────────────────────────────────────────────────────────────
 
 - Return ONLY valid JSON. No markdown, no backticks, no comments.
-- If a field has no items, return an empty list [].
-- Do not hallucinate content not present in the chunk.
-- It is acceptable for some fields to be empty if the chunk does not contain
-  relevant content for that field.
-- Dates should be returned as ISO format (YYYY-MM-DD) when the full date is clear,
-  or as the natural language phrase if only partial information is available
-  (e.g. "end of week", "within 1 week").
+- Empty fields → []. Do not hallucinate. Ground every item in the chunk text.
+- Preserve proper nouns, tool names, acronyms, and numbers exactly.
 """.strip()
 
 

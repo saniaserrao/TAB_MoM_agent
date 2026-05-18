@@ -191,11 +191,14 @@ def _group_into_agenda_items(state: dict) -> list[dict]:
     summary   = state.get("summary") or ""
 
     # Separate discussion tags from other flex tags
+    # Key: lowercased topic title for case-insensitive matching
     discussion_map: dict[str, str] = {}
     other_flex: list = []
     for tag in flex_tags:
         if tag.get("type") == "discussion":
-            discussion_map[tag.get("speaker", "")] = tag.get("content", "")
+            key = tag.get("speaker", "").strip().lower()
+            if key:
+                discussion_map[key] = tag.get("content", "")
         else:
             other_flex.append(tag)
 
@@ -238,7 +241,34 @@ def _group_into_agenda_items(state: dict) -> list[dict]:
 
     items = []
     for i, title in enumerate(titles):
-        discussion = discussion_map.get(title, "") or (summary if i == 0 else "")
+        # 1. Exact match (lowercased, stripped)
+        title_lower = title.strip().lower()
+        discussion = discussion_map.get(title_lower, "")
+
+        # 2. Normalised match — strip punctuation and compare
+        if not discussion:
+            title_norm = re.sub(r"[^a-z0-9 ]", "", title_lower)
+            for dk, dv in discussion_map.items():
+                dk_norm = re.sub(r"[^a-z0-9 ]", "", dk)
+                if dk_norm == title_norm:
+                    discussion = dv
+                    break
+
+        # 3. Keyword-overlap fallback
+        if not discussion:
+            title_kw = _keywords(title)
+            best_score, best_text = 0, ""
+            for dk, dv in discussion_map.items():
+                score = len(title_kw & _keywords(dk))
+                if score > best_score:
+                    best_score, best_text = score, dv
+            if best_score > 0:
+                discussion = best_text
+
+        # 4. First-item fallback to summary
+        if not discussion and i == 0:
+            discussion = summary
+
         items.append({
             "title":      title,
             "discussion": discussion,
