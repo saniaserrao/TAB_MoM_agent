@@ -1,4 +1,4 @@
-# TA Buddy — MoM Agent
+# TA Buddy - MoM Agent
 
 **Automated Meeting Minutes for Microsoft Innovation Hub engagements.**
 
@@ -25,34 +25,6 @@ The MoM Agent takes a recording URL or live microphone audio, runs it through a 
 > Add `pipeline_diagram.png` and `architecture_diagram.png` to the repo root (screenshots of the diagrams in this README).
 
 ![Pipeline diagram](pipeline_diagram_mom.png)
-
-
-```
-Browser (index.html)
-       |
-       | HTTP / SSE
-       v
-FastAPI server (api.py)
-       |
-       | background threads
-       v
-LangGraph pipeline
-  ingest_node
-       |  (conditional: error -> END)
-  clean_merge_node
-       |
-  chunk_node
-       |
-  extract_node          <-- Groq LLM per chunk
-       |
-  synthesise_node       <-- Groq LLM (single consolidation call)
-       |
-  doc_writer_node       <-- python-docx -> Azure Blob / local
-       |
-  notify_outcome_node   <-- optional webhook to Outcome Agent
-       |
-      END
-```
 
 Each node reads from and writes to `MoMState`, a TypedDict that flows through the entire graph. Any node can set `state["error"]` to short-circuit to END.
 
