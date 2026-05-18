@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MoM Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ── Reset & Variables ───────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:          #EDECEA;
+    --surface:     #FFFFFF;
+    --border:      #D8D5D0;
+    --border-soft: #E8E5E0;
+    --text:        #1A1917;
+    --text-muted:  #7A776F;
+    --text-faint:  #AEA99F;
+    --accent:      #1B5DCC;
+    --accent-dark: #133FA3;
+    --accent-bg:   #EEF3FB;
+    --danger:      #C0392B;
+    --danger-bg:   #FDF2F0;
+    --success:     #1A7A4A;
+    --success-bg:  #EDF7F2;
+    --warn:        #8A6000;
+    --warn-bg:     #FDF8ED;
+    --rec:         #C0392B;
+    --mono:        'DM Mono', monospace;
+    --sans:        'DM Sans', sans-serif;
+    --display:     'Syne', sans-serif;
+    --radius:      8px;
+    --radius-lg:   12px;
+    --shadow:      0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+    --shadow-lg:   0 2px 8px rgba(0,0,0,0.10), 0 12px 32px rgba(0,0,0,0.06);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  .shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .topbar-sep { color: var(--border); font-size: 18px; font-weight: 200; }
+
+  .topbar-agent {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+  }
+
+  .topbar-desc {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-faint);
+    font-family: var(--sans);
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 24px 80px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 680px;
+  }
+
+  /* ── Screen transitions ───────────────────────────────────── */
+  .screen {
+    display: none;
+    animation: fadeUp 0.22s ease both;
+  }
+  .screen.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Typography ───────────────────────────────────────────── */
+  .page-title {
+    font-family: var(--display);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    margin-bottom: 4px;
+  }
+
+  .page-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 32px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+  }
+
+  /* ── Cards ────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .card-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  /* ── Mode selector ────────────────────────────────────────── */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .mode-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mode-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(27,93,204,0.08);
+    transform: translateY(-1px);
+  }
+
+  .mode-card.selected {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+  }
+
+  .mode-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    font-size: 18px;
+  }
+
+  .mode-card.selected .mode-icon { background: rgba(27,93,204,0.12); }
+
+  .mode-card-title {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .mode-card-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* ── Form elements ────────────────────────────────────────── */
+  .field { margin-bottom: 16px; }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+  }
+
+  .field input, .field select {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    appearance: none;
+  }
+
+  .field input::placeholder { color: var(--text-faint); }
+
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(27,93,204,0.10);
+  }
+
+  .field select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237A776F' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .field-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 18px;
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    letter-spacing: 0.01em;
+  }
+
+  .btn:active { transform: scale(0.98); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-dark); }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--bg); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0 10px;
+  }
+  .btn-ghost:hover { color: var(--text); background: var(--bg); }
+
+  .btn-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid rgba(192,57,43,0.2);
+  }
+  .btn-danger:hover { background: rgba(192,57,43,0.12); }
+
+  .btn-full { width: 100%; justify-content: center; }
+
+  .btn-lg { height: 46px; padding: 0 24px; font-size: 14px; }
+
+  /* ── Participant list ─────────────────────────────────────── */
+  .participant-list { margin-bottom: 16px; }
+
+  .participant-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    animation: fadeUp 0.15s ease both;
+  }
+
+  .participant-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent-bg);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .participant-info { flex: 1; min-width: 0; }
+
+  .participant-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .participant-desig {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .role-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .role-ta      { background: var(--accent-bg);  color: var(--accent); }
+  .role-msft    { background: #EDF3FF;            color: #2563EB; }
+  .role-client  { background: var(--warn-bg);     color: var(--warn); }
+  .role-unknown { background: var(--bg);          color: var(--text-faint); border: 1px solid var(--border); }
+
+  /* ── Add participant inline form ─────────────────────────── */
+  .add-participant-form {
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-top: 8px;
+  }
+
+  /* ── Progress screen ─────────────────────────────────────── */
+  .progress-wrap {
+    padding: 16px 0;
+  }
+
+  .step-list { margin: 24px 0; }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-soft);
+    transition: opacity 0.2s;
+  }
+
+  .step-item:last-child { border-bottom: none; }
+
+  .step-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: background 0.3s, border-color 0.3s;
+    position: relative;
+  }
+
+  .step-dot.pending {
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+  }
+
+  .step-dot.running {
+    background: var(--accent-bg);
+    border: 1.5px solid var(--accent);
+  }
+
+  .step-dot.running::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .step-dot.done {
+    background: var(--success-bg);
+    border: 1.5px solid var(--success);
+    color: var(--success);
+  }
+
+  .step-dot.error {
+    background: var(--danger-bg);
+    border: 1.5px solid var(--danger);
+    color: var(--danger);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .step-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+  }
+
+  .step-label.pending { color: var(--text-faint); font-weight: 400; }
+  .step-label.running { color: var(--text); }
+  .step-label.done    { color: var(--text-muted); }
+
+  .step-status-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .step-status-tag.running  { background: var(--accent-bg);  color: var(--accent); }
+  .step-status-tag.done     { background: var(--success-bg); color: var(--success); }
+  .step-status-tag.error    { background: var(--danger-bg);  color: var(--danger); }
+
+  /* Animated waveform for running state */
+  .waveform {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+  }
+
+  .waveform span {
+    display: block;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    animation: wave 0.9s ease-in-out infinite;
+  }
+
+  .waveform span:nth-child(1) { animation-delay: 0s;    height: 6px; }
+  .waveform span:nth-child(2) { animation-delay: 0.15s; height: 10px; }
+  .waveform span:nth-child(3) { animation-delay: 0.3s;  height: 14px; }
+  .waveform span:nth-child(4) { animation-delay: 0.15s; height: 10px; }
+  .waveform span:nth-child(5) { animation-delay: 0s;    height: 6px; }
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+    50%       { transform: scaleY(1);   opacity: 1; }
+  }
+
+  /* ── Result screen ───────────────────────────────────────── */
+  .result-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .result-check {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--success-bg);
+    border: 2px solid var(--success);
+    color: var(--success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  .result-title {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .result-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .summary-box {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.65;
+    font-style: italic;
+    border-left: 3px solid var(--accent);
+  }
+
+  /* ── Live recording ───────────────────────────────────────── */
+  .rec-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--danger);
+    margin-bottom: 16px;
+  }
+
+  .rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--rec);
+    animation: blink 1s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  .rec-timer {
+    font-family: var(--mono);
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--text);
+    margin: 16px 0;
+    letter-spacing: 0.04em;
+  }
+
+  .rec-chunks {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    margin-bottom: 20px;
+  }
+
+  /* ── Alert / notice ───────────────────────────────────────── */
+  .notice {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .notice-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid rgba(138,96,0,0.2); }
+  .notice-err  { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(192,57,43,0.2); }
+  .notice-ok   { background: var(--success-bg); color: var(--success); border: 1px solid rgba(26,122,74,0.2); }
+
+  /* ── Divider ─────────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: var(--border-soft);
+    margin: 20px 0;
+  }
+
+  /* ── Chips ────────────────────────────────────────────────── */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .chip-blue { background: var(--accent-bg); color: var(--accent); }
+
+  /* ── Scrollbar ────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Topbar ── -->
+  <header class="topbar">
+    <span class="topbar-logo">TA Buddy</span>
+    <span class="topbar-sep">|</span>
+    <span class="topbar-agent">MOM AGENT</span>
+    <span class="topbar-desc">Session Capture &amp; Minutes Generation</span>
+  </header>
+
+  <main class="main">
+    <div class="container">
+
+      <!-- ════════════════════════════════════════════════════
+           SCREEN 1 — Mode selection
+      ═════════════════════════════════════════════════════ -->
+      <div class="screen active" id="screen-mode">
+        <div class="page-title">New Session</div>
+        <div class="page-sub">Generate structured minutes from a meeting recording or live session.</div>
+
+        <div class="section-label">Session Details</div>
+        <div class="card">
+          <div class="field-row">
+            <div class="field">
+              <label>Company</label>
+              <input id="company" type="text" placeholder="e.g. ICICI Lombard" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label>Engagement Type</label>
+              <select id="engagement-type">
+                <option value="">Select type…</option>
+                <option value="BEW">Business Envisioning (BEW)</option>
+                <option value="ADS">Architecture Design Session</option>
+                <option value="RPD">Rapid Prototyping</option>
+                <option value="SEW">Solution Envisioning</option>
+                <option value="Meeting">General Meeting</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-label">Recording Mode</div>
+        <div class="mode-grid">
+          <div class="mode-card selected" id="mode-post" onclick="selectMode('post')">
+            <div class="mode-icon">📼</div>
+            <div class="mode-card-title">Post-Session</div>
+            <div class="mode-card-desc">Paste a YouTube or Teams recording URL</div>
+          </div>
+          <div class="mode-card" id="mode-live" onclick="selectMode('live')">
+            <div class="mode-icon">🎙️</div>
+            <div class="mode-card-title">Live Recording</div>
+            <div class="mode-card-desc">Capture audio in real-time via browser mic</div>
+          </div>
+        </div>
+
+        <!-- Post-session URL field -->
+        <div id="url-section" class="card">
+          <div class="field" style="margin-bottom:0">
+            <label>Recording URL</label>
+            <input id="source-url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- Live mode notice -->
+        <div id="live-notice" class="notice notice-warn" style="display:none">
+          <span>⚠</span>
+          <span>Live mode uses your browser microphone. You'll be prompted to allow access when you proceed. Audio is sent to the server in 30-second chunks.</span>
+        </div>
+
+        <button class="btn btn-primary btn-full btn-lg" onclick="goToParticipants()">
+          Continue → Add Participants
+        </button>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════
+           SCREEN 2 — Participants
+      ═════════════════════════════════════════════════════ -->
+      <div class="screen" id="screen-participants">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+          <button class="btn btn-ghost" onclick="goBack('screen-mode')" style="padding:0;height:auto;font-size:13px;color:var(--text-muted)">← Back</button>
+          <div class="page-title" style="margin-bottom:0">Participants</div>
+        </div>
+        <div class="page-sub">Paste the attendee list from your invite or notes — the system will parse names, designations, and roles automatically.</div>
+
+        <div class="section-label">Paste Attendee List</div>
+        <div class="card">
+          <div class="field" style="margin-bottom:12px">
+            <label>Paste names &amp; designations (any format)</label>
+            <textarea id="paste-area" rows="5"
+              style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--mono);font-size:12px;resize:vertical;outline:none;background:var(--surface);color:var(--text);transition:border-color 0.15s,box-shadow 0.15s;"
+              onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(27,93,204,0.10)'"
+              onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'"
+            ></textarea>
+          </div>
+          <button class="btn btn-secondary" id="parse-btn" onclick="parseParticipants()" style="width:100%;justify-content:center;margin-bottom:4px">
+            ✦ Parse Participants
+          </button>
+          <div id="parse-status" style="font-size:12px;color:var(--text-muted);text-align:center;min-height:18px;margin-top:4px"></div>
+        </div>
+
+        <div class="section-label" style="margin-top:8px">Attendees <span id="participant-count" style="color:var(--text-faint)">(0)</span></div>
+        <div class="card" style="padding:16px">
+          <div class="participant-list" id="participant-list">
+            <div style="color:var(--text-faint);font-size:13px;padding:8px 0;text-align:center" id="no-participants-msg">
+              No participants parsed yet
+            </div>
+          </div>
+
+          <!-- Manual add row (always visible as fallback) -->
+          <div style="border-top:1px solid var(--border-soft);margin-top:12px;padding-top:12px">
+            <div class="section-label" style="margin-bottom:8px">Add manually</div>
+            <div class="field-row-3" style="margin-bottom:10px">
+              <div class="field" style="margin-bottom:0">
+                <label>Full Name</label>
+                <input id="p-name" type="text" placeholder="Eric Johnson" autocomplete="off" />
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label>Designation</label>
+                <input id="p-desig" type="text" placeholder="CTO" autocomplete="off" />
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label>Role</label>
+                <select id="p-role">
+                  <option value="client">Client</option>
+                  <option value="ta">MIH / TA</option>
+                  <option value="msft">Microsoft</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-secondary" onclick="addParticipant()" style="width:100%;justify-content:center">
+              + Add Participant
+            </button>
+          </div>
+        </div>
+
+        <div class="notice notice-warn" id="participant-warn" style="display:none">
+          <span>⚠</span><span>Add at least one participant to continue.</span>
+        </div>
+
+        <button class="btn btn-primary btn-full btn-lg" onclick="startPipeline()">
+          Generate Minutes →
+        </button>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════
+           SCREEN 3a — Progress (post-session)
+      ═════════════════════════════════════════════════════ -->
+      <div class="screen" id="screen-progress">
+        <div class="page-title">Generating Minutes</div>
+        <div class="page-sub">This takes 1–3 minutes depending on the recording length.</div>
+
+        <div class="card">
+          <div class="progress-wrap">
+            <div class="step-list" id="step-list">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="notice notice-err" id="progress-error" style="display:none">
+          <span>✕</span><span id="progress-error-msg"></span>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════
+           SCREEN 3b — Live recording
+      ═════════════════════════════════════════════════════ -->
+      <div class="screen" id="screen-live">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+          <button class="btn btn-ghost" id="live-back-btn" onclick="stopLive(true)" style="padding:0;height:auto;font-size:13px;color:var(--text-muted)">← Back</button>
+          <div class="page-title" style="margin-bottom:0">Live Recording</div>
+        </div>
+        <div class="page-sub">Recording in progress. Stop when the meeting ends.</div>
+
+        <div class="card">
+          <div class="rec-indicator">
+            <div class="rec-dot"></div>
+            RECORDING
+          </div>
+          <div class="rec-timer" id="rec-timer">00:00</div>
+          <div class="rec-chunks" id="rec-chunks">0 chunks captured</div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-danger btn-lg" onclick="stopLive(false)" style="flex:1;justify-content:center">
+              ⏹ Stop &amp; Generate Minutes
+            </button>
+          </div>
+        </div>
+
+        <div class="notice notice-warn">
+          <span>ℹ</span>
+          <span>Audio is processed in 30-second chunks. Keep this tab open during the meeting.</span>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════
+           SCREEN 4 — Result
+      ═════════════════════════════════════════════════════ -->
+      <div class="screen" id="screen-result">
+        <div class="result-header">
+          <div class="result-check">✓</div>
+          <div>
+            <div class="result-title">Minutes Ready</div>
+            <div class="result-sub" id="result-session-id">—</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="stat-agenda">—</div>
+              <div class="stat-label">Agenda Items</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="stat-actions">—</div>
+              <div class="stat-label">Action Items</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="stat-decisions">—</div>
+              <div class="stat-label">Decisions</div>
+            </div>
+          </div>
+
+          <div class="section-label">Session Summary</div>
+          <div class="summary-box" id="result-summary">—</div>
+
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary btn-lg" onclick="downloadMom()" style="flex:1;justify-content:center">
+              ↓ Download MoM Document
+            </button>
+            <button class="btn btn-secondary btn-lg" onclick="startNew()">
+              + New Session
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  mode:          'post',   // 'post' | 'live'
+  company:       '',
+  engagementType:'',
+  sourceUrl:     '',
+  participants:  [],
+  sessionId:     null,
+  liveSessionId: null,
+  mediaRecorder: null,
+  liveTimer:     null,
+  liveSeconds:   0,
+  liveChunks:    0,
+  result:        null,
+};
+
+const PIPELINE_STEPS = [
+  'Ingesting',
+  'Cleaning',
+  'Chunking',
+  'Extracting',
+  'Synthesising',
+  'Writing Document',
+];
+
+const ROLE_LABELS = {
+  ta:      'MIH / TA',
+  msft:    'Microsoft',
+  client:  'Client',
+  unknown: 'Unknown',
+};
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  el.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function goBack(screenId) { showScreen(screenId); }
+
+// ── Mode selection ────────────────────────────────────────────────────────────
+function selectMode(m) {
+  state.mode = m;
+  document.getElementById('mode-post').classList.toggle('selected', m === 'post');
+  document.getElementById('mode-live').classList.toggle('selected', m === 'live');
+  document.getElementById('url-section').style.display  = m === 'post' ? 'block' : 'none';
+  document.getElementById('live-notice').style.display  = m === 'live' ? 'flex'  : 'none';
+}
+
+function goToParticipants() {
+  state.company        = document.getElementById('company').value.trim();
+  state.engagementType = document.getElementById('engagement-type').value;
+  state.sourceUrl      = document.getElementById('source-url').value.trim();
+
+  if (!state.company) {
+    alert('Please enter a company name.');
+    return;
+  }
+  if (!state.engagementType) {
+    alert('Please select an engagement type.');
+    return;
+  }
+  if (state.mode === 'post' && !state.sourceUrl) {
+    alert('Please enter the recording URL.');
+    return;
+  }
+
+  showScreen('screen-participants');
+}
+
+// ── Participant paste-to-parse ────────────────────────────────────────────────
+async function parseParticipants() {
+  const text = document.getElementById('paste-area').value.trim();
+  if (!text) {
+    document.getElementById('parse-status').textContent = 'Please paste some participant text first.';
+    return;
+  }
+
+  const btn    = document.getElementById('parse-btn');
+  const status = document.getElementById('parse-status');
+  btn.disabled    = true;
+  btn.textContent = '⏳ Parsing…';
+  status.textContent = '';
+
+  try {
+    const res = await fetch('/parse-participants', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, company: state.company }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `Server error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const parsed = data.participants || [];
+
+    if (parsed.length === 0) {
+      status.textContent = 'No participants found — try a different format.';
+      return;
+    }
+
+    // Merge with existing, deduplicating by name
+    const existingNames = new Set(state.participants.map(p => p.name.toLowerCase()));
+    let added = 0;
+    for (const p of parsed) {
+      if (!existingNames.has((p.name || '').toLowerCase())) {
+        state.participants.push({
+          name:        p.name        || '',
+          designation: p.designation || '',
+          role:        p.role        || 'unknown',
+        });
+        existingNames.add((p.name || '').toLowerCase());
+        added++;
+      }
+    }
+
+    status.style.color = 'var(--success)';
+    status.textContent = `✓ ${added} participant${added !== 1 ? 's' : ''} added (${parsed.length - added} duplicate${parsed.length - added !== 1 ? 's' : ''} skipped)`;
+    document.getElementById('paste-area').value = '';
+    renderParticipants();
+  } catch (err) {
+    status.style.color = 'var(--danger)';
+    status.textContent = `✕ ${err.message}`;
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '✦ Parse Participants';
+  }
+}
+
+// ── Participants ──────────────────────────────────────────────────────────────
+function addParticipant() {
+  const name  = document.getElementById('p-name').value.trim();
+  const desig = document.getElementById('p-desig').value.trim();
+  const role  = document.getElementById('p-role').value;
+
+  if (!name) { alert('Enter a participant name.'); return; }
+
+  state.participants.push({ name, designation: desig, role });
+  document.getElementById('p-name').value  = '';
+  document.getElementById('p-desig').value = '';
+
+  renderParticipants();
+}
+
+function removeParticipant(idx) {
+  state.participants.splice(idx, 1);
+  renderParticipants();
+}
+
+function renderParticipants() {
+  const list  = document.getElementById('participant-list');
+  const noMsg = document.getElementById('no-participants-msg');
+  const countEl = document.getElementById('participant-count');
+
+  if (countEl) countEl.textContent = `(${state.participants.length})`;
+
+  if (state.participants.length === 0) {
+    list.innerHTML = '';
+    list.appendChild(noMsg);
+    noMsg.style.display = 'block';
+    return;
+  }
+
+  noMsg.style.display = 'none';
+  list.innerHTML = state.participants.map((p, i) => `
+    <div class="participant-item">
+      <div class="participant-avatar">${initials(p.name)}</div>
+      <div class="participant-info">
+        <div class="participant-name">${esc(p.name)}</div>
+        <div class="participant-desig">${esc(p.designation || '—')}</div>
+      </div>
+      <span class="role-chip role-${p.role}">${ROLE_LABELS[p.role] || p.role}</span>
+      <button class="btn btn-ghost" onclick="removeParticipant(${i})" style="padding:0 6px;height:28px;font-size:16px;color:var(--text-faint)">×</button>
+    </div>
+  `).join('');
+}
+
+// ── Pipeline start ────────────────────────────────────────────────────────────
+async function startPipeline() {
+  document.getElementById('participant-warn').style.display = 'none';
+
+  if (state.mode === 'post') {
+    await startPostSession();
+  } else {
+    await startLive();
+  }
+}
+
+async function startPostSession() {
+  showScreen('screen-progress');
+  initStepList();
+
+  try {
+    const res = await fetch('/run', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url:      state.sourceUrl,
+        company:         state.company,
+        engagement_type: state.engagementType,
+        participants:    state.participants,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    state.sessionId = data.session_id;
+
+    listenForProgress(state.sessionId);
+  } catch (err) {
+    showProgressError(err.message);
+  }
+}
+
+// ── Progress SSE ──────────────────────────────────────────────────────────────
+function initStepList() {
+  const list = document.getElementById('step-list');
+  list.innerHTML = PIPELINE_STEPS.map(step => `
+    <div class="step-item" id="step-${slugify(step)}">
+      <div class="step-dot pending" id="dot-${slugify(step)}"></div>
+      <span class="step-label pending" id="label-${slugify(step)}">${step}</span>
+    </div>
+  `).join('');
+}
+
+function updateStep(stepName, status) {
+  const slug  = slugify(stepName);
+  const dot   = document.getElementById(`dot-${slug}`);
+  const label = document.getElementById(`label-${slug}`);
+  if (!dot) return;
+
+  dot.className   = `step-dot ${status}`;
+  label.className = `step-label ${status}`;
+
+  const existing = dot.querySelector('.step-status-tag');
+  if (existing) existing.remove();
+
+  if (status === 'running') {
+    dot.innerHTML = '';
+    const item = document.getElementById(`step-${slug}`);
+    const tag  = document.createElement('span');
+    tag.className   = 'step-status-tag running';
+    tag.textContent = 'RUNNING';
+    item.appendChild(tag);
+  } else if (status === 'done') {
+    dot.textContent = '✓';
+  } else if (status === 'error') {
+    dot.textContent = '✕';
+  }
+}
+
+function listenForProgress(sessionId) {
+  const es = new EventSource(`/status/${sessionId}`);
+
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+
+      if (data.type === 'progress') {
+        (data.progress || []).forEach(p => updateStep(p.step, p.status));
+      }
+
+      if (data.type === 'done') {
+        es.close();
+        // Mark all steps done
+        PIPELINE_STEPS.forEach(s => updateStep(s, 'done'));
+        showResult(data);
+      }
+
+      if (data.type === 'error') {
+        es.close();
+        showProgressError(data.error);
+      }
+
+      if (data.type === 'close') {
+        es.close();
+      }
+    } catch (_) {}
+  };
+
+  es.onerror = () => {
+    es.close();
+    showProgressError('Connection lost. Check server logs.');
+  };
+}
+
+function showProgressError(msg) {
+  const el = document.getElementById('progress-error');
+  document.getElementById('progress-error-msg').textContent = msg;
+  el.style.display = 'flex';
+}
+
+// ── Live recording ────────────────────────────────────────────────────────────
+async function startLive() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // Generate a live session ID
+    state.liveSessionId = `live_${Date.now()}`;
+    state.liveChunks    = 0;
+    state.liveSeconds   = 0;
+
+    showScreen('screen-live');
+    startLiveTimer();
+
+    const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? { mimeType: 'audio/webm;codecs=opus' }
+      : {};
+
+    state.mediaRecorder = new MediaRecorder(stream, options);
+
+    let chunkBuffer = [];
+
+    state.mediaRecorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        chunkBuffer.push(e.data);
+      }
+    };
+
+    // Send a chunk every 30 seconds
+    state.mediaRecorder.start(30000);
+
+    // Poll buffer every 30s
+    state._chunkInterval = setInterval(async () => {
+      if (chunkBuffer.length === 0) return;
+      const blob = new Blob(chunkBuffer, { type: 'audio/webm' });
+      chunkBuffer = [];
+      await uploadAudioChunk(blob);
+    }, 30000);
+
+  } catch (err) {
+    alert('Microphone access denied or unavailable: ' + err.message);
+  }
+}
+
+async function uploadAudioChunk(blob) {
+  try {
+    const form = new FormData();
+    form.append('file', blob, 'chunk.webm');
+
+    const res = await fetch(`/audio-chunk?session_id=${state.liveSessionId}`, {
+      method: 'POST',
+      body:   form,
+    });
+
+    if (res.ok) {
+      state.liveChunks++;
+      document.getElementById('rec-chunks').textContent =
+        `${state.liveChunks} chunk${state.liveChunks !== 1 ? 's' : ''} captured`;
+    }
+  } catch (err) {
+    console.warn('Chunk upload failed:', err);
+  }
+}
+
+async function stopLive(goBackFlag) {
+  clearInterval(state.liveTimer);
+  clearInterval(state._chunkInterval);
+
+  if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+    state.mediaRecorder.stop();
+    state.mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+
+  if (goBackFlag) {
+    showScreen('screen-participants');
+    return;
+  }
+
+  // Trigger pipeline
+  showScreen('screen-progress');
+  initStepList();
+
+  try {
+    const res = await fetch('/run-live', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id:      state.liveSessionId,
+        company:         state.company,
+        engagement_type: state.engagementType,
+        participants:    state.participants,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    state.sessionId = data.session_id;
+    listenForProgress(state.sessionId);
+  } catch (err) {
+    showProgressError(err.message);
+  }
+}
+
+function startLiveTimer() {
+  state.liveTimer = setInterval(() => {
+    state.liveSeconds++;
+    const m = String(Math.floor(state.liveSeconds / 60)).padStart(2, '0');
+    const s = String(state.liveSeconds % 60).padStart(2, '0');
+    document.getElementById('rec-timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+// ── Result ────────────────────────────────────────────────────────────────────
+function showResult(data) {
+  state.result = data;
+
+  document.getElementById('result-session-id').textContent =
+    data.session_id || '—';
+  document.getElementById('stat-agenda').textContent    = data.agenda_items_count ?? '—';
+  document.getElementById('stat-actions').textContent   = data.action_items_count ?? '—';
+  document.getElementById('stat-decisions').textContent = data.decisions_count    ?? '—';
+  document.getElementById('result-summary').textContent = data.summary || 'No summary available.';
+
+  setTimeout(() => showScreen('screen-result'), 400);
+}
+
+async function downloadMom() {
+  if (!state.sessionId) return;
+  window.location.href = `/download/${state.sessionId}`;
+}
+
+function startNew() {
+  // Reset state
+  state.participants   = [];
+  state.sessionId      = null;
+  state.liveSessionId  = null;
+  state.result         = null;
+  state.mode           = 'post';
+  state.company        = '';
+  state.engagementType = '';
+  state.sourceUrl      = '';
+
+  document.getElementById('company').value         = '';
+  document.getElementById('engagement-type').value = '';
+  document.getElementById('source-url').value      = '';
+  document.getElementById('progress-error').style.display = 'none';
+
+  // Navigate first, then update mode UI (elements must be in DOM)
+  showScreen('screen-mode');
+  selectMode('post');
+  renderParticipants();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function initials(name) {
+  return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('');
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+selectMode('post');
+</script>
+</body>
+</html>
